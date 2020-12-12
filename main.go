@@ -5,13 +5,19 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
+//User is ..
 type User struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Dob               string `json:"dob"`
+	PhoneNumber       int64  `json:"phonenumber"`
+	EmailAddress      string `json:"emailaddress"`
+	CreationTimestamp string `json:"creationtimestamp"`
 }
 type userHandlers struct {
 	sync.Mutex
@@ -31,6 +37,29 @@ func (h *userHandlers) usersHandlers(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("method not allowed"))
 		return
 	}
+}
+func (h *userHandlers) getUser(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(r.URL.String(), "/")
+	if len(parts) != 3 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	h.Lock()
+	user, ok := h.store[parts[2]]
+	h.Unlock()
+	if !ok {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	jsonBytes, err := json.Marshal(user)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+	}
+	w.Header().Add("content-type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonBytes)
 }
 
 func (h *userHandlers) get(w http.ResponseWriter, r *http.Request) {
@@ -86,13 +115,24 @@ func (h *userHandlers) post(w http.ResponseWriter, r *http.Request) {
 
 func newUserHandlers() *userHandlers {
 	return &userHandlers{
-		store: map[string]User{},
+		store: map[string]User{
+			"1": {
+
+				ID:                "1",
+				Name:              "Abhishek Soy",
+				Dob:               "1997-07-24",
+				PhoneNumber:       8603100915,
+				EmailAddress:      "soyabhishek81@gmail.com",
+				CreationTimestamp: fmt.Sprintf("%s", time.Unix(time.Now().UTC().Unix(), 0)),
+			},
+		},
 	}
 }
 func main() {
 	port := ":8080"
 	userHandlers := newUserHandlers()
 	http.HandleFunc("/users", userHandlers.usersHandlers)
+	http.HandleFunc("/users/", userHandlers.getUser)
 	err := http.ListenAndServe(port, nil)
 	if err != nil {
 		panic(err)
