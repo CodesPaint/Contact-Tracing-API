@@ -24,6 +24,8 @@ type userHandlers struct {
 	store map[string]User
 }
 
+var globalcounter int64
+
 func (h *userHandlers) usersHandlers(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
@@ -46,6 +48,7 @@ func (h *userHandlers) getUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.Lock()
+
 	user, ok := h.store[parts[2]]
 	h.Unlock()
 	if !ok {
@@ -56,6 +59,7 @@ func (h *userHandlers) getUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
+		return
 	}
 	w.Header().Add("content-type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -106,33 +110,101 @@ func (h *userHandlers) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+	user.CreationTimestamp = fmt.Sprintf("%s", time.Now().UTC())
+	user.ID = fmt.Sprintf("%d", globalcounter)
+	globalcounter = globalcounter + 1
 	h.Lock()
 	h.store[user.ID] = user
+
 	defer h.Unlock()
 
 }
 
 func newUserHandlers() *userHandlers {
 	return &userHandlers{
-		store: map[string]User{
-			"1": {
-
-				ID:                "1",
-				Name:              "Abhishek Soy",
-				Dob:               "1997-07-24",
-				PhoneNumber:       8603100915,
-				EmailAddress:      "soyabhishek81@gmail.com",
-				CreationTimestamp: fmt.Sprintf("%s", time.Unix(time.Now().UTC().Unix(), 0)),
-			},
-		},
+		store: map[string]User{},
 	}
 }
+
+//Contact Section
+
+//Contact is ..
+type Contact struct {
+	UserIDOne     string `json:"useridone"`
+	UserIDTwo     string `json:"useridtwo"`
+	TimeOfContact string `json:"timeofcontact"`
+}
+
+type contactHandlers struct {
+	sync.Mutex
+	store map[string]Contact
+}
+
+func (h *contactHandlers) contactHandlers(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+
+	case "POST":
+		h.createContact(w, r)
+		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		w.Write([]byte("method not allowed"))
+		return
+	}
+}
+
+func (h *contactHandlers) createContact(w http.ResponseWriter, r *http.Request) {
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	defer r.Body.Close()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	ct := r.Header.Get("content-type")
+	if ct != "application/json" {
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		w.Write([]byte(fmt.Sprintf("need content-type 'application/json', but got '%s'", ct)))
+		return
+	}
+
+	var contact Contact
+	err = json.Unmarshal(bodyBytes, &contact)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	contact.TimeOfContact = fmt.Sprintf("%s", time.Now().UTC())
+	h.Lock()
+	h.store[contact.TimeOfContact] = contact
+	defer h.Unlock()
+}
+
+func (h *contactHandlers) getContact(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func newContactHandlers() *contactHandlers {
+	return &contactHandlers{
+		store: map[string]Contact{},
+	}
+}
+
 func main() {
+	globalcounter = 1
 	port := ":8080"
 	userHandlers := newUserHandlers()
 	http.HandleFunc("/users", userHandlers.usersHandlers)
 	http.HandleFunc("/users/", userHandlers.getUser)
+
+	//Contact Handle Functions
+	contactHandlers := newContactHandlers()
+	http.HandleFunc("/contacts", contactHandlers.contactHandlers)
+	http.HandleFunc("/contacts/", contactHandlers.getContact)
+
 	err := http.ListenAndServe(port, nil)
 	if err != nil {
 		panic(err)
